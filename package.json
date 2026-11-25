@@ -1,0 +1,26 @@
+{
+  "name": "babyfilms-whatsapp-oficial",
+  "version": "1.0.0",
+  "description": "Atendimento automatizado WhatsApp Cloud API Oficial da Baby Films",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "meta",
+    "cloud-api",
+    "webhook",
+    "gemini",
+    "babyfilms"
+  ],
+  "author": "Baby Films",
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "latest",
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
