@@ -8,7 +8,9 @@ const {
     DEFAULT_PHONE_NUMBER_ID,
     getEnvVar,
     resolvePhoneNumberId,
+    getAiClient,
     processWebhookEvent,
+    gerarRespostaAtendimento,
     enviarMensagemWhatsApp,
 } = require('../index');
 
@@ -289,9 +291,61 @@ describe('Simulação de webhook e envio para WhatsApp Cloud API', () => {
                 '/webhook?hub.mode=subscribe&hub.verify_token=errado&hub.challenge=CHAL3'
             );
             assert.equal(forbidden.statusCode, 403);
+
+            const duplicateParam = await httpRequest(
+                port,
+                'GET',
+                '/webhook?hub.mode=subscribe&hub.verify_token=a&hub.verify_token=b&hub.challenge=CHAL4'
+            );
+            assert.equal(duplicateParam.statusCode, 403);
         } finally {
             await new Promise((resolve) => server.close(resolve));
         }
+    });
+
+    it('normaliza prefixo Bearer duplicado no WHATSAPP_TOKEN e valida destinatário ausente', async () => {
+        process.env.WHATSAPP_TOKEN = 'Bearer EAA-com-prefixo';
+        const axiosCalls = [];
+        mock.method(axios, 'post', async (url, payload, config) => {
+            axiosCalls.push({ url, payload, config });
+            return { data: { messages: [{ id: 'wamid.bearer-1' }] } };
+        });
+
+        const ok = await enviarMensagemWhatsApp('5555996208688', 'Oi');
+        assert.equal(ok.sent, true);
+        assert.equal(axiosCalls[0].config.headers.Authorization, 'Bearer EAA-com-prefixo');
+
+        process.env.WHATSAPP_TOKEN = 'Bearer   ';
+        const emptyBearer = await enviarMensagemWhatsApp('5555996208688', 'Oi');
+        assert.equal(emptyBearer.sent, false);
+        assert.equal(emptyBearer.reason, 'missing_credentials');
+
+        process.env.WHATSAPP_TOKEN = 'EAA-valido';
+        const missingTo = await enviarMensagemWhatsApp('', 'Oi');
+        assert.equal(missingTo.sent, false);
+        assert.equal(missingTo.reason, 'missing_recipient');
+    });
+
+    it('inicializa Gemini sob demanda via "GEMINI API KEY" e faz fallback se a API falhar', async () => {
+        process.env['GEMINI API KEY'] = 'gemini-dynamic-key';
+        const client = getAiClient('gemini-dynamic-key');
+        assert.ok(client);
+
+        mock.method(client.models, 'generateContent', async () => ({
+            text: '  Resposta personalizada da Baby Films!  ',
+        }));
+
+        const aiReply = await gerarRespostaAtendimento('Quanto custa?', '5555996208688');
+        assert.equal(aiReply, 'Resposta personalizada da Baby Films!');
+
+        mock.restoreAll();
+        mock.method(client.models, 'generateContent', async () => {
+            throw new Error('Quota exceeded');
+        });
+
+        const fallbackReply = await gerarRespostaAtendimento('Quanto custa?', '5555996208688');
+        assert.match(fallbackReply, /Baby Films/);
+        assert.match(fallbackReply, /https:\/\/youtu\.be\/HLIeDSifwVA/);
     });
 
     it('lida com eventos ignorados e erro de token ausente sem lançar exceção', async () => {

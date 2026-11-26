@@ -82,15 +82,30 @@ const PHONE_NUMBER_ID = resolvePhoneNumberId();
 const VERIFY_TOKEN = getEnvVar('VERIFY_TOKEN') || DEFAULT_VERIFY_TOKEN;
 const GEMINI_API_KEY = getEnvVar('GEMINI_API_KEY');
 
-// Inicializa a SDK do Gemini caso a chave esteja presente
-let ai = null;
-if (GEMINI_API_KEY) {
+// Inicializa a SDK do Gemini sob demanda e acompanha alterações na chave
+let aiClient = null;
+let aiClientKey = null;
+
+function getAiClient(apiKey) {
+    if (!apiKey) {
+        return null;
+    }
+    if (aiClient && aiClientKey === apiKey) {
+        return aiClient;
+    }
     try {
-        ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+        aiClient = new GoogleGenAI({ apiKey });
+        aiClientKey = apiKey;
         console.log('🤖 Google Gen AI inicializado com sucesso.');
+        return aiClient;
     } catch (e) {
         console.warn('⚠️ Não foi possível inicializar GoogleGenAI:', e.message);
+        return null;
     }
+}
+
+if (GEMINI_API_KEY) {
+    getAiClient(GEMINI_API_KEY);
 }
 
 // Prompt e diretrizes de atendimento Baby Films
@@ -127,8 +142,8 @@ app.get('/webhook', (req, res) => {
 
     console.log(`[VERIFICAÇÃO WEBHOOK] Recebido modo: ${mode}`);
 
-    const configuredVerifyToken = getEnvVar('VERIFY_TOKEN') || VERIFY_TOKEN || DEFAULT_VERIFY_TOKEN;
-    const cleanToken = (token || '').trim();
+    const configuredVerifyToken = getEnvVar('VERIFY_TOKEN') || DEFAULT_VERIFY_TOKEN;
+    const cleanToken = typeof token === 'string' ? token.trim() : '';
     if (mode === 'subscribe' && (cleanToken === configuredVerifyToken || cleanToken === DEFAULT_VERIFY_TOKEN)) {
         console.log('✅ Webhook verificado pela Meta com sucesso!');
         return res.status(200).send(challenge);
@@ -195,10 +210,11 @@ app.post('/webhook', async (req, res) => {
  */
 async function gerarRespostaAtendimento(userMessage, fromNumber) {
     const activeGeminiKey = getEnvVar('GEMINI_API_KEY');
-    if (ai && activeGeminiKey) {
+    const activeAi = getAiClient(activeGeminiKey);
+    if (activeAi) {
         try {
             console.log('🤖 Gerando resposta personalizada com Gemini...');
-            const response = await ai.models.generateContent({
+            const response = await activeAi.models.generateContent({
                 model: 'gemini-2.5-flash',
                 contents: userMessage || '',
                 config: {
@@ -225,11 +241,17 @@ async function gerarRespostaAtendimento(userMessage, fromNumber) {
 async function enviarMensagemWhatsApp(to, textBody, explicitPhoneId = null) {
     const activePhoneId = (explicitPhoneId !== null && explicitPhoneId !== undefined && String(explicitPhoneId).trim())
         || resolvePhoneNumberId(null);
-    const whatsappToken = getEnvVar('WHATSAPP_TOKEN');
+    const rawToken = getEnvVar('WHATSAPP_TOKEN');
+    const whatsappToken = rawToken ? rawToken.replace(/^Bearer(?:\s+|$)/i, '').trim() : undefined;
 
     if (!activePhoneId || !whatsappToken) {
         console.error('❌ Erro: PHONE_NUMBER_ID ou WHATSAPP_TOKEN não estão configurados nas variáveis de ambiente!');
         return { sent: false, reason: 'missing_credentials', phoneId: activePhoneId };
+    }
+
+    if (!to || !String(to).trim()) {
+        console.error('❌ Erro: Número do destinatário (to) não informado para envio!');
+        return { sent: false, reason: 'missing_recipient', phoneId: activePhoneId };
     }
 
     const url = `https://graph.facebook.com/v21.0/${activePhoneId}/messages`;
@@ -285,6 +307,7 @@ module.exports = {
     normalizeEnvKey,
     getEnvVar,
     resolvePhoneNumberId,
+    getAiClient,
     processWebhookEvent,
     gerarRespostaAtendimento,
     enviarMensagemWhatsApp,
