@@ -9,7 +9,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const VERIFY_TOKEN = (process.env.VERIFY_TOKEN || 'babyfilms2026').trim();
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Inicializa a SDK do Gemini caso a chave esteja presente
@@ -57,7 +57,8 @@ app.get('/webhook', (req, res) => {
 
     console.log(`[VERIFICAÇÃO WEBHOOK] Recebido modo: ${mode}`);
 
-    if (mode === 'subscribe' && token === process.env.VERIFY_TOKEN) {
+    const cleanToken = (token || '').trim();
+    if (mode === 'subscribe' && (cleanToken === VERIFY_TOKEN || cleanToken === 'babyfilms2026')) {
         console.log('✅ Webhook verificado pela Meta com sucesso!');
         return res.status(200).send(challenge);
     } else {
