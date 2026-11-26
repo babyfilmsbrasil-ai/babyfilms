@@ -8,7 +8,7 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || '1532130713305838';
 const VERIFY_TOKEN = (process.env.VERIFY_TOKEN || 'babyfilms2026').trim();
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -98,11 +98,12 @@ app.post('/webhook', async (req, res) => {
         // Processa mensagens de texto
         if (messageType === 'text') {
             const userText = message.text?.body;
+            const phoneId = value.metadata?.phone_number_id || PHONE_NUMBER_ID;
             console.log(`\n📩 [MENSAGEM RECEBIDA] De: ${from} | Texto: "${userText}"`);
 
             // Gera a resposta inteligente e envia de volta
             const replyText = await gerarRespostaAtendimento(userText, from);
-            await enviarMensagemWhatsApp(from, replyText);
+            await enviarMensagemWhatsApp(from, replyText, phoneId);
         } else {
             console.log(`ℹ️ Mensagem recebida de tipo '${messageType}' ignorada ou sem suporte.`);
         }
@@ -142,13 +143,14 @@ async function gerarRespostaAtendimento(userMessage, fromNumber) {
 /**
  * ETAPA 3: Função de envio de mensagem via WhatsApp Cloud API Oficial
  */
-async function enviarMensagemWhatsApp(to, textBody) {
-    if (!PHONE_NUMBER_ID || !WHATSAPP_TOKEN) {
+async function enviarMensagemWhatsApp(to, textBody, explicitPhoneId = null) {
+    const activePhoneId = explicitPhoneId || PHONE_NUMBER_ID || '1532130713305838';
+    if (!activePhoneId || !WHATSAPP_TOKEN) {
         console.error('❌ Erro: PHONE_NUMBER_ID ou WHATSAPP_TOKEN não estão configurados nas variáveis de ambiente!');
         return;
     }
 
-    const url = `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`;
+    const url = `https://graph.facebook.com/v21.0/${activePhoneId}/messages`;
 
     const payload = {
         messaging_product: 'whatsapp',
