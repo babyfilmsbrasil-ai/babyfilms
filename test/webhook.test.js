@@ -324,9 +324,13 @@ describe('Simulação de webhook e envio para WhatsApp Cloud API', () => {
         const missingTo = await enviarMensagemWhatsApp('', 'Oi');
         assert.equal(missingTo.sent, false);
         assert.equal(missingTo.reason, 'missing_recipient');
+
+        const emptyBody = await enviarMensagemWhatsApp('5555996208688', '   ');
+        assert.equal(emptyBody.sent, false);
+        assert.equal(emptyBody.reason, 'empty_message');
     });
 
-    it('inicializa Gemini sob demanda via "GEMINI API KEY" e faz fallback se a API falhar', async () => {
+    it('inicializa Gemini sob demanda via "GEMINI API KEY" e faz fallback se a API falhar ou retornar vazio', async () => {
         process.env['GEMINI API KEY'] = 'gemini-dynamic-key';
         const client = getAiClient('gemini-dynamic-key');
         assert.ok(client);
@@ -337,6 +341,15 @@ describe('Simulação de webhook e envio para WhatsApp Cloud API', () => {
 
         const aiReply = await gerarRespostaAtendimento('Quanto custa?', '5555996208688');
         assert.equal(aiReply, 'Resposta personalizada da Baby Films!');
+
+        mock.restoreAll();
+        mock.method(client.models, 'generateContent', async () => ({
+            text: '   \n  ',
+        }));
+
+        const blankReply = await gerarRespostaAtendimento('Quanto custa?', '5555996208688');
+        assert.match(blankReply, /Baby Films/);
+        assert.match(blankReply, /https:\/\/youtu\.be\/HLIeDSifwVA/);
 
         mock.restoreAll();
         mock.method(client.models, 'generateContent', async () => {
@@ -354,6 +367,12 @@ describe('Simulação de webhook e envio para WhatsApp Cloud API', () => {
             entry: [{ changes: [{ value: { statuses: [{ id: '1' }] } }] }],
         });
         assert.deepEqual(statusEvent, { processed: false, reason: 'no_messages' });
+
+        const malformedMessagesEvent = await processWebhookEvent({
+            object: 'whatsapp_business_account',
+            entry: [{ changes: [{ value: { messages: [null] } }] }],
+        });
+        assert.deepEqual(malformedMessagesEvent, { processed: false, reason: 'no_messages' });
 
         const missingTokenResult = await enviarMensagemWhatsApp('5555996208688', 'Teste');
         assert.equal(missingTokenResult.sent, false);

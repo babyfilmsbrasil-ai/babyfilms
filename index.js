@@ -167,7 +167,7 @@ async function processWebhookEvent(body) {
     const value = changes?.value;
 
     // Ignora notificações de status (sent, delivered, read) ou mensagens sem corpo
-    if (!value || !value.messages || value.messages.length === 0) {
+    if (!value || !Array.isArray(value.messages) || value.messages.length === 0 || !value.messages[0]) {
         return { processed: false, reason: 'no_messages' };
     }
 
@@ -223,8 +223,9 @@ async function gerarRespostaAtendimento(userMessage, fromNumber) {
                 }
             });
 
-            if (response && response.text) {
-                return response.text.trim();
+            const trimmedText = typeof response?.text === 'string' ? response.text.trim() : '';
+            if (trimmedText) {
+                return trimmedText;
             }
         } catch (err) {
             console.error('⚠️ Falha ao chamar API do Gemini, usando resposta de contingência:', err.message);
@@ -252,6 +253,11 @@ async function enviarMensagemWhatsApp(to, textBody, explicitPhoneId = null) {
     if (!to || !String(to).trim()) {
         console.error('❌ Erro: Número do destinatário (to) não informado para envio!');
         return { sent: false, reason: 'missing_recipient', phoneId: activePhoneId };
+    }
+
+    if (!textBody || !String(textBody).trim()) {
+        console.error('❌ Erro: Corpo da mensagem (textBody) vazio para envio!');
+        return { sent: false, reason: 'empty_message', phoneId: activePhoneId };
     }
 
     const url = `https://graph.facebook.com/v21.0/${activePhoneId}/messages`;
